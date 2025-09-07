@@ -12,7 +12,7 @@ Telegram bot that sends **one technical question per day**
 ##  Example
 Here’s how it looks in Telegram:
 
-![Screenshot](screenshots/example.png)
+![Screenshot](example.png)
 
 ##  Setup
 1. Clone the repo:
