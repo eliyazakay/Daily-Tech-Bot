@@ -21,3 +21,14 @@ Here’s how it looks in Telegram:
    ```bash
    git clone https://github.com/<your-username>/daily-tech-bot.git
    cd daily-tech-bot
+2. Create a virtual environment and install dependencies
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+pip install -r requirements.txt
+3. Create a .env file
+TELEGRAM_TOKEN=PUT_YOUR_TOKEN_HERE
+TZ=Asia/Jerusalem
+SCHEDULE_HOUR=9
+SCHEDULE_MIN=0
+4. Run
+python bot.py
