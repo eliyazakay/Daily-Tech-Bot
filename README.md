@@ -1,9 +1,9 @@
-# Daily Tech Q Bot 🤖
+# Daily Tech Q Bot 
 
 Telegram bot that sends **one technical question per day**  
 (SQL, Algorithms, HTML) with explained solutions.
 
-## ✨ Features
+##  Features
 - Daily question at 09:00 (configurable)
 - Categories: SQL, Algorithms, HTML
 - Inline buttons: Show solution, Another question, Resources
@@ -12,7 +12,7 @@ Telegram bot that sends **one technical question per day**
 ##  Example
 Here’s how it looks in Telegram:
 
-![Screenshot](example.png)
+<img src="example.png" alt="Screenshot" width="400"/>
 
 ##  Setup
 1. Clone the repo:
