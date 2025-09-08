@@ -1,0 +1,22 @@
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment
+.venv/
+venv/
+
+# Ignore environment files
+.env
+.env.*
+
+# Ignore SQLite databases
+*.sqlite3
+
+# Ignore OneDrive sync folders (in case of nesting)
+OneDrive/
+
+# Ignore VS Code settings
+.vscode/
