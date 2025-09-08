@@ -200,6 +200,50 @@ QUESTIONS: List[Dict[str, Any]] = [
             """
         ).strip(),
     },
+    
+    {
+        "id": 101,
+        "category": "Python",
+        "difficulty": "easy",
+        "question": "מה ההבדל בין רשימה (list) לבין טופל (tuple) בפייתון?",
+        "solution": "list היא mutable (אפשר לשנות ערכים), בעוד tuple היא immutable (לא ניתן לשנות אחרי יצירה)."
+    },
+    {
+        "id": 102,
+        "category": "Python",
+        "difficulty": "medium",
+        "question": "כתוב פונקציה שמקבלת מחרוזת ומחזירה את ספירת המילים בה.",
+        "solution": "אפשר להשתמש ב־split() כדי לחלק למילים ואז לקחת len:\n\n```python\ndef word_count(s):\n    return len(s.split())\n```"
+    },
+    {
+        "id": 103,
+        "category": "Python",
+        "difficulty": "hard",
+        "question": "הסבר מה זה list comprehension ותן דוגמה.",
+        "solution": "syntactic sugar ליצירת רשימות:\n```python\nsquares = [x*x for x in range(5)]\n```"
+    },
+    {
+        "id": 201,
+        "category": "CSS",
+        "difficulty": "easy",
+        "question": "מה ההבדל בין class selector (`.class`) ל־id selector (`#id`) ב־CSS?",
+        "solution": "class יכול להיות בשימוש על מספר אלמנטים, id ייחודי לדף. הסינטקס: `.myclass {}` מול `#myid {}`."
+    },
+    {
+        "id": 202,
+        "category": "CSS",
+        "difficulty": "medium",
+        "question": "איך מגדירים grid layout בסיסי של 3 עמודות ב־CSS?",
+        "solution": "```css\n.container {\n  display: grid;\n  grid-template-columns: 1fr 1fr 1fr;\n}\n```"
+    },
+    {
+        "id": 203,
+        "category": "CSS",
+        "difficulty": "hard",
+        "question": "מה זה CSS specificity ואיך נקבע איזה כלל מנצח?",
+        "solution": "Specificity נקבע לפי סוג selector: inline > id > class > element. כלל עם ניקוד גבוה יותר מנצח."
+    },
+
 ]
 
 # =============================
@@ -224,8 +268,24 @@ def db() -> sqlite3.Connection:
 
 def init_db():
     with db() as conn:
-        conn.execute(SCHEMA_SQL)
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                chat_id INTEGER NOT NULL,
+                subscribed INTEGER NOT NULL,
+                last_question_id INTEGER,
+                last_sent_date TEXT
+            )"""
+        )
         conn.commit()
+
+        # הוספת העמודה daily_count אם היא לא קיימת
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN daily_count INTEGER NOT NULL DEFAULT 1;")
+            conn.commit()
+        except Exception:
+            pass  # אם העמודה כבר קיימת – מתעלמים
+
 
 
 # =============================
@@ -247,9 +307,11 @@ def pick_question(previous_id: Optional[str]) -> Dict[str, Any]:
 # Bot Handlers
 # =============================
 WELCOME = (
-    "👋 Hi! You'll get one technical question per day (SQL, Algorithms, HTML).\n"
-    "Use /subscribe or /unsubscribe. At any time: /today to resend today's question."
+    "👋 Hi! You'll get technical questions daily (SQL, Algorithms, HTML).\n"
+    "Use /subscribe or /unsubscribe. /today to resend today's question.\n"
+    "Use /setcount <n> to get n questions per day (1–5). /more <n> to get extra now."
 )
+
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -310,32 +372,36 @@ async def send_question(chat_id: int, q: Dict[str, Any], app: Application) -> No
 
 
 async def send_daily_question_to_user(app: Application, user_id: int):
-    # Ensure user exists and is subscribed
     with db() as conn:
         row = conn.execute(
-            "SELECT chat_id, subscribed, last_question_id, last_sent_date FROM users WHERE user_id=?",
+            "SELECT chat_id, subscribed, last_question_id, last_sent_date, "
+            "COALESCE(daily_count, 1) as daily_count "
+            "FROM users WHERE user_id=?",
             (user_id,),
         ).fetchone()
     if not row:
         return
-    chat_id, subscribed, last_qid, last_date = row
+    chat_id, subscribed, last_qid, last_date, daily_count = row
     if not subscribed:
         return
 
-    # Avoid re-sending if already sent today via scheduler
-    if last_date == today_str():
-        # Just resend current question
-        q = next((x for x in QUESTIONS if x["id"] == last_qid), None) or pick_question(last_qid)
-    else:
-        q = pick_question(last_qid)
+    # אם כבר שלחנו היום – נשלח שוב את הסט (אפשר להשאיר כך או לדלג; כאן שולחים שוב לפי בקשות ידניות)
+    previous_id = last_qid if last_date == today_str() else None
+
+    sent_any = False
+    for i in range(int(daily_count)):
+        q = pick_question(previous_id)
+        previous_id = q["id"]
+        await send_question(chat_id, q, app)
+        sent_any = True
+
+    if sent_any and last_date != today_str():
         with db() as conn:
             conn.execute(
                 "UPDATE users SET last_question_id=?, last_sent_date=? WHERE user_id=?",
-                (q["id"], today_str(), user_id),
+                (previous_id, today_str(), user_id),
             )
             conn.commit()
-
-    await send_question(chat_id, q, app)
 
 
 async def daily_broadcast(app: Application):
@@ -419,6 +485,44 @@ async def post_init(app: Application):
     init_db()
 
 
+async def cmd_setcount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not context.args:
+        await update.message.reply_text("Usage: /setcount <n>  (1–5)")
+        return
+    try:
+        n = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Please provide a number, e.g. /setcount 3")
+        return
+    if not (1 <= n <= 5):
+        await update.message.reply_text("Allowed range is 1–5.")
+        return
+    with db() as conn:
+        conn.execute("UPDATE users SET daily_count=? WHERE user_id=?", (n, user_id))
+        conn.commit()
+    await update.message.reply_text(f"✅ Daily question count set to {n}.")
+
+async def cmd_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    # ברירת מחדל: 1; אפשר /more 3 לשלוח שלוש עכשיו
+    n = 1
+    if context.args:
+        try:
+            n = max(1, min(5, int(context.args[0])))
+        except ValueError:
+            pass
+    # שולחים n שאלות מיידית
+    app = context.application
+    previous = None
+    for _ in range(n):
+        q = pick_question(previous)
+        previous = q["id"]
+        await send_question(update.effective_chat.id, q, app)
+
+
+
+
 def build_app() -> Application:
     if not TELEGRAM_TOKEN:
         raise SystemExit("Missing TELEGRAM_TOKEN env var")
@@ -430,6 +534,9 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
     app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("setcount", cmd_setcount))
+    app.add_handler(CommandHandler("more", cmd_more))
+
 
     # Buttons
     app.add_handler(CallbackQueryHandler(on_button))
@@ -455,5 +562,6 @@ if __name__ == "__main__":
         # Long-polling mode (easy local dev)
         print("Starting long polling…")
         application.run_polling(close_loop=False)
+
 
 
